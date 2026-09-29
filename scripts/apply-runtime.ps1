@@ -57,9 +57,9 @@ $text = Get-Content $hw -Raw
 $oldFormat = 'descDepth.Format             = DXGI_FORMAT_D24_UNORM_S8_UINT;'
 $newFormat = @'
 #if defined(USE_DX11)
-`tdescDepth.Format             = DXGI_FORMAT_R24G8_TYPELESS;
+	descDepth.Format             = DXGI_FORMAT_R24G8_TYPELESS;
 #else
-`tdescDepth.Format             = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	descDepth.Format             = DXGI_FORMAT_D24_UNORM_S8_UINT;
 #endif
 '@
 if (-not $text.Contains($oldFormat)) { throw "Depth format insertion point not found" }
@@ -67,9 +67,9 @@ $text = $text.Replace($oldFormat, $newFormat.Trim())
 $oldBind = 'descDepth.BindFlags          = D3D_BIND_DEPTH_STENCIL;'
 $newBind = @'
 #if defined(USE_DX11)
-`tdescDepth.BindFlags          = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+	descDepth.BindFlags          = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
 #else
-`tdescDepth.BindFlags          = D3D10_BIND_DEPTH_STENCIL;
+	descDepth.BindFlags          = D3D10_BIND_DEPTH_STENCIL;
 #endif
 '@
 if (-not $text.Contains($oldBind)) { throw "Depth bind insertion point not found" }
@@ -77,13 +77,13 @@ $text = $text.Replace($oldBind, $newBind.Trim())
 $oldDsv = 'R = pDevice->CreateDepthStencilView(pDepthStencil, NULL, &pBaseZB);'
 $newDsv = @'
 #if defined(USE_DX11)
-`tD3D11_DEPTH_STENCIL_VIEW_DESC optiDepthView = {};
-`toptiDepthView.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-`toptiDepthView.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-`toptiDepthView.Texture2D.MipSlice = 0;
-`tR = pDevice->CreateDepthStencilView(pDepthStencil, &optiDepthView, &pBaseZB);
+	D3D11_DEPTH_STENCIL_VIEW_DESC optiDepthView = {};
+	optiDepthView.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	optiDepthView.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	optiDepthView.Texture2D.MipSlice = 0;
+	R = pDevice->CreateDepthStencilView(pDepthStencil, &optiDepthView, &pBaseZB);
 #else
-`tR = pDevice->CreateDepthStencilView(pDepthStencil, NULL, &pBaseZB);
+	R = pDevice->CreateDepthStencilView(pDepthStencil, NULL, &pBaseZB);
 #endif
 '@
 if (-not $text.Contains($oldDsv)) { throw "Depth DSV insertion point not found" }
@@ -99,45 +99,45 @@ $decl = "#if defined(USE_DX11)`r`nextern bool OptiBridge_GetJitterNdc(float& x, 
 $text = $text.Replace($needle, $decl + $needle)
 $old = @'
 #if defined(USE_DX11)
-`t`tif (ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_taa)
-`t`t{
-`t`t`tstatic Fvector2 TAA_Offset[4] = 
-`t`t`t{
-`t`t`t`t{  0.0f, -1.0f },
-`t`t`t`t{ -1.0f,  0.0f },
-`t`t`t`t{  1.0f,  0.0f },
-`t`t`t`t{  0.0f,  1.0f }
-`t`t`t};
+		if (ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_taa)
+		{
+			static Fvector2 TAA_Offset[4] = 
+			{
+				{  0.0f, -1.0f },
+				{ -1.0f,  0.0f },
+				{  1.0f,  0.0f },
+				{  0.0f,  1.0f }
+			};
 
-`t`t`tJitterX = TAA_Offset[ Device.dwFrame % 4 ].x / Device.dwWidth;
-`t`t`tJitterY = TAA_Offset[ Device.dwFrame % 4 ].y / Device.dwHeight;
-`t`t}
+			JitterX = TAA_Offset[ Device.dwFrame % 4 ].x / Device.dwWidth;
+			JitterY = TAA_Offset[ Device.dwFrame % 4 ].y / Device.dwHeight;
+		}
 #endif
 
-`t`tRCache.set_c(C, JitterX * ps_ssfx_taa.y, JitterY * ps_ssfx_taa.y, ps_ssfx_taa.x, ps_ssfx_taa.w);
+		RCache.set_c(C, JitterX * ps_ssfx_taa.y, JitterY * ps_ssfx_taa.y, ps_ssfx_taa.x, ps_ssfx_taa.w);
 '@
 $new = @'
 #if defined(USE_DX11)
-`t`tconst bool optiJitter = OptiBridge_GetJitterNdc(JitterX, JitterY);
-`t`tif (!optiJitter && ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_taa)
-`t`t{
-`t`t`tstatic Fvector2 TAA_Offset[4] = 
-`t`t`t{
-`t`t`t`t{  0.0f, -1.0f },
-`t`t`t`t{ -1.0f,  0.0f },
-`t`t`t`t{  1.0f,  0.0f },
-`t`t`t`t{  0.0f,  1.0f }
-`t`t`t};
+		const bool optiJitter = OptiBridge_GetJitterNdc(JitterX, JitterY);
+		if (!optiJitter && ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_taa)
+		{
+			static Fvector2 TAA_Offset[4] = 
+			{
+				{  0.0f, -1.0f },
+				{ -1.0f,  0.0f },
+				{  1.0f,  0.0f },
+				{  0.0f,  1.0f }
+			};
 
-`t`t`tJitterX = TAA_Offset[ Device.dwFrame % 4 ].x / Device.dwWidth;
-`t`t`tJitterY = TAA_Offset[ Device.dwFrame % 4 ].y / Device.dwHeight;
-`t`t}
-`t`tif (optiJitter)
-`t`t`tRCache.set_c(C, JitterX, JitterY, 1.0f, ps_ssfx_taa.w);
-`t`telse
-`t`t`tRCache.set_c(C, JitterX * ps_ssfx_taa.y, JitterY * ps_ssfx_taa.y, ps_ssfx_taa.x, ps_ssfx_taa.w);
+			JitterX = TAA_Offset[ Device.dwFrame % 4 ].x / Device.dwWidth;
+			JitterY = TAA_Offset[ Device.dwFrame % 4 ].y / Device.dwHeight;
+		}
+		if (optiJitter)
+			RCache.set_c(C, JitterX, JitterY, 1.0f, ps_ssfx_taa.w);
+		else
+			RCache.set_c(C, JitterX * ps_ssfx_taa.y, JitterY * ps_ssfx_taa.y, ps_ssfx_taa.x, ps_ssfx_taa.w);
 #else
-`t`tRCache.set_c(C, JitterX, JitterY, ps_ssfx_taa.x, ps_ssfx_taa.w);
+		RCache.set_c(C, JitterX, JitterY, ps_ssfx_taa.x, ps_ssfx_taa.w);
 #endif
 '@
 if (-not $text.Contains($old.Trim())) { throw "Stock SSFX jitter body not found" }
@@ -150,17 +150,17 @@ $text = Get-Content $combine -Raw
 $includeNeedle = '#include "../../xrEngine/environment.h"'
 $text = $text.Replace($includeNeedle, $includeNeedle + [Environment]::NewLine + '#include "OptiBridgeRuntime.h"')
 $oldTaa = @'
-`tif (RImplementation.o.ssfx_taa && ps_ssfx_taa.x > 0)
-`t{
-`t`tphase_ssfx_taa();
-`t}
+	if (RImplementation.o.ssfx_taa && ps_ssfx_taa.x > 0)
+	{
+		phase_ssfx_taa();
+	}
 '@
 $newTaa = @'
-`tconst bool optiBridgeResolved = OptiBridge_Dispatch(this);
-`tif (!optiBridgeResolved && RImplementation.o.ssfx_taa && ps_ssfx_taa.x > 0)
-`t{
-`t`tphase_ssfx_taa();
-`t}
+	const bool optiBridgeResolved = OptiBridge_Dispatch(this);
+	if (!optiBridgeResolved && RImplementation.o.ssfx_taa && ps_ssfx_taa.x > 0)
+	{
+		phase_ssfx_taa();
+	}
 '@
 if (-not $text.Contains($oldTaa.Trim())) { throw "Stock TAA seam not found" }
 $text = $text.Replace($oldTaa.Trim(), $newTaa.Trim())
