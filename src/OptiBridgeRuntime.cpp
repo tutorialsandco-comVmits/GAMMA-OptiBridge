@@ -23,6 +23,10 @@ struct OptiBridgeState
     bool contextValid = false;
     bool resourcesValid = false;
     bool firstDispatch = true;
+    bool loggedDispatchEntry = false;
+    bool loggedSvpSkip = false;
+    bool loggedMissingTarget = false;
+    bool loggedMissingDepth = false;
     u32 width = 0;
     u32 height = 0;
     u32 lastFrame = u32(-1);
@@ -118,6 +122,8 @@ void DestroyResources()
     g_bridge.height = 0;
     g_bridge.colorFormat = DXGI_FORMAT_UNKNOWN;
     g_bridge.firstDispatch = true;
+    g_bridge.loggedMissingTarget = false;
+    g_bridge.loggedMissingDepth = false;
 }
 
 bool CompilePrepareShader()
@@ -209,12 +215,30 @@ bool CreateContext(u32 width, u32 height)
 bool EnsureResources(CRenderTarget* target)
 {
     if (!target || !target->rt_Generic_0 || !target->rt_ssfx_motion_vectors || !HW.pBaseZB)
+    {
+        if (!g_bridge.loggedMissingTarget)
+        {
+            Msg("! [OptiBridge] runtime resources not ready: target=%p color=%p motion=%p depthView=%p",
+                target,
+                target ? &*target->rt_Generic_0 : nullptr,
+                target ? &*target->rt_ssfx_motion_vectors : nullptr,
+                HW.pBaseZB);
+            g_bridge.loggedMissingTarget = true;
+        }
         return false;
+    }
 
     ID3D11Resource* depthResource = nullptr;
     HW.pBaseZB->GetResource(&depthResource);
     if (!depthResource)
+    {
+        if (!g_bridge.loggedMissingDepth)
+        {
+            Msg("! [OptiBridge] base depth view returned no backing resource");
+            g_bridge.loggedMissingDepth = true;
+        }
         return false;
+    }
 
     D3D11_TEXTURE2D_DESC colorDesc = {};
     target->rt_Generic_0->pSurface->GetDesc(&colorDesc);
@@ -366,11 +390,34 @@ bool OptiBridge_GetJitterNdc(float& x, float& y)
 
 bool OptiBridge_Dispatch(CRenderTarget* target)
 {
-    if (!ReadEnabled() || !target)
+    if (!ReadEnabled())
         return false;
 
-    if (Device.m_SecondViewport.IsSVPFrame())
+    if (!g_bridge.loggedDispatchEntry)
+    {
+        Msg("* [OptiBridge] temporal dispatch hook reached");
+        g_bridge.loggedDispatchEntry = true;
+    }
+
+    if (!target)
+    {
+        if (!g_bridge.loggedMissingTarget)
+        {
+            Msg("! [OptiBridge] temporal dispatch received null render target");
+            g_bridge.loggedMissingTarget = true;
+        }
         return false;
+    }
+
+    if (Device.m_SecondViewport.IsSVPFrame())
+    {
+        if (!g_bridge.loggedSvpSkip)
+        {
+            Msg("* [OptiBridge] skipping SecondViewport frame");
+            g_bridge.loggedSvpSkip = true;
+        }
+        return false;
+    }
 
     if (RImplementation.o.dx10_msaa)
     {
