@@ -1,8 +1,6 @@
 name: Build FSR2 Link Probe
 
 on:
-  push:
-    branches: [ integration ]
   workflow_dispatch:
 
 permissions:
