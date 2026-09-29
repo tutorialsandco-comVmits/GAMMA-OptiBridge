@@ -52,10 +52,15 @@ jobs:
         shell: pwsh
         run: |
           $src = "xray-monolith/external/fsr2dx11"
+          $api = "$src/src/ffx-fsr2-api"
           $bld = "$src/build-optibridge"
-          cmake -S $src -B $bld -A x64 -DGFX_API_DX11=ON -DGFX_API_DX12=OFF -DGFX_API_VK=OFF -DFFX_FSR2_API_DX11=ON -DFFX_FSR2_API_DX12=OFF -DFFX_FSR2_API_VK=OFF -DFSR2_BUILD_AS_DLL=OFF
+          cmake -S $api -B $bld -A x64 -DFFX_FSR2_API_DX11=ON -DFFX_FSR2_API_DX12=OFF -DFFX_FSR2_API_VK=OFF -DFSR2_BUILD_AS_DLL=OFF
           cmake --build $bld --config Release --target ffx_fsr2_api_x64 ffx_fsr2_api_dx11_x64 -- /m
-          Get-ChildItem "$src/bin/ffx_fsr2_api" -Filter "*.lib" | Format-Table Name,Length
+          $builtLibDir = "$api/bin/ffx_fsr2_api"
+          $linkLibDir = "$src/bin/ffx_fsr2_api"
+          New-Item -ItemType Directory -Force $linkLibDir | Out-Null
+          Copy-Item "$builtLibDir/*.lib" $linkLibDir -Force
+          Get-ChildItem $linkLibDir -Filter "*.lib" | Format-Table Name,Length
 
       - name: Apply OptiBridge link probe
         shell: pwsh
