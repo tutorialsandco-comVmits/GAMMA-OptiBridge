@@ -1,0 +1,71 @@
+name: Build GAMMA OptiBridge
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  XRAY_REPO: https://github.com/themrdemonized/xray-monolith.git
+  XRAY_REF: 2026.7.22
+  SOLUTION: src/engine-vs2022.sln
+
+jobs:
+  baseline-dx11:
+    name: Baseline ${{ matrix.configuration }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [DX11, DX11-AVX]
+
+    steps:
+      - name: Checkout OptiBridge
+        uses: actions/checkout@v4
+
+      - name: Checkout locked xray-monolith source
+        shell: pwsh
+        run: |
+          git clone --branch "$env:XRAY_REF" --depth 1 --recurse-submodules "$env:XRAY_REPO" xray-monolith
+          git -C xray-monolith submodule update --init --recursive
+          git -C xray-monolith rev-parse HEAD
+          git -C xray-monolith describe --tags --always
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Build locked baseline
+        working-directory: xray-monolith
+        shell: pwsh
+        run: |
+          msbuild /m /p:Configuration=${{ matrix.configuration }} /p:Platform=x64 "$env:SOLUTION"
+
+      - name: Locate executables
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path xray-monolith -Recurse -Filter "AnomalyDX11*.exe" |
+            Select-Object FullName, Length, LastWriteTime |
+            Format-Table -AutoSize
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          $expected = if ("${{ matrix.configuration }}" -eq "DX11-AVX") { "AnomalyDX11AVX.exe" } else { "AnomalyDX11.exe" }
+          $exe = Get-ChildItem -Path xray-monolith -Recurse -Filter $expected | Select-Object -First 1
+          if (-not $exe) { throw "Could not find $expected after build." }
+          Copy-Item $exe.FullName "artifact/$expected"
+          Get-FileHash "artifact/$expected" -Algorithm SHA256 | Format-List
+
+      - name: Upload baseline executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-${{ matrix.configuration }}
+          path: artifact/*
+          if-no-files-found: error
+          retention-days: 7
