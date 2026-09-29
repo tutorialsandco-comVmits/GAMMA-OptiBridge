@@ -1,0 +1,102 @@
+name: Build FSR2 Link Probe
+
+on:
+  push:
+    branches: [ integration ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  XRAY_REPO: https://github.com/themrdemonized/xray-monolith.git
+  XRAY_REF: 2026.7.22
+  FSR2_REPO: https://github.com/optiscaler/FidelityFX-FSR2-DX11.git
+  FSR2_REF: f2e3f86390746eb3f0bd1b28e91ea3cbc790ee76
+  SOLUTION: src/engine-vs2022.sln
+
+jobs:
+  fsr2-link-probe:
+    name: FSR2 link probe ${{ matrix.configuration }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [DX11, DX11-AVX]
+
+    steps:
+      - name: Checkout OptiBridge integration branch
+        uses: actions/checkout@v4
+
+      - name: Checkout locked X-Ray source
+        shell: pwsh
+        run: |
+          git clone --branch "$env:XRAY_REF" --depth 1 --recurse-submodules "$env:XRAY_REPO" xray-monolith
+          git -C xray-monolith submodule update --init --recursive
+          git -C xray-monolith rev-parse HEAD
+
+      - name: Checkout pinned FSR2 DX11
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "xray-monolith/external" | Out-Null
+          git clone "$env:FSR2_REPO" "xray-monolith/external/fsr2dx11"
+          git -C "xray-monolith/external/fsr2dx11" checkout "$env:FSR2_REF"
+          git -C "xray-monolith/external/fsr2dx11" rev-parse HEAD
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Build FSR2 2.2.1 static DX11 libraries
+        shell: pwsh
+        run: |
+          $src = "xray-monolith/external/fsr2dx11"
+          $bld = "$src/build-optibridge"
+          cmake -S $src -B $bld -A x64 -DGFX_API_DX11=ON -DGFX_API_DX12=OFF -DGFX_API_VK=OFF -DFFX_FSR2_API_DX11=ON -DFFX_FSR2_API_DX12=OFF -DFFX_FSR2_API_VK=OFF -DFSR2_BUILD_AS_DLL=OFF
+          cmake --build $bld --config Release --target ffx_fsr2_api_x64 ffx_fsr2_api_dx11_x64 -- /m
+          Get-ChildItem "$src/bin/ffx_fsr2_api" -Filter "*.lib" | Format-Table Name,Length
+
+      - name: Apply OptiBridge link probe
+        shell: pwsh
+        run: |
+          ./scripts/apply-link-probe.ps1 -XrayRoot "./xray-monolith" -Fsr2Root "./xray-monolith/external/fsr2dx11"
+
+      - name: Build patched executable
+        working-directory: xray-monolith
+        shell: pwsh
+        run: |
+          msbuild /m /p:Configuration=${{ matrix.configuration }} /p:Platform=x64 "$env:SOLUTION"
+
+      - name: Stage executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          $expected = if ("${{ matrix.configuration }}" -eq "DX11-AVX") { "AnomalyDX11AVX.exe" } else { "AnomalyDX11.exe" }
+          $exe = Get-ChildItem -Path xray-monolith -Recurse -Filter $expected | Select-Object -First 1
+          if (-not $exe) { throw "Could not find $expected after build." }
+          Copy-Item $exe.FullName "artifact/$expected"
+          Get-FileHash "artifact/$expected" -Algorithm SHA256 | Format-List
+
+      - name: Verify FSR2 exports for OptiScaler
+        shell: pwsh
+        run: |
+          $expected = if ("${{ matrix.configuration }}" -eq "DX11-AVX") { "AnomalyDX11AVX.exe" } else { "AnomalyDX11.exe" }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Sort-Object FullName | Select-Object -Last 1
+          if (-not $dumpbin) { throw "dumpbin.exe not found" }
+          $exports = & $dumpbin.FullName /exports "artifact/$expected"
+          $exports | Set-Content "artifact/exports.txt"
+          foreach ($name in @("ffxFsr2ContextCreate","ffxFsr2ContextDispatch","ffxFsr2ContextDestroy","ffxFsr2GetInterfaceDX11")) {
+            if (-not ($exports -match $name)) { throw "Missing required export: $name" }
+          }
+          Write-Host "All required FSR2 exports are present for OptiScaler DX11 interception."
+
+      - name: Upload link-probe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fsr2-link-probe-${{ matrix.configuration }}
+          path: artifact/*
+          if-no-files-found: error
+          retention-days: 7
