@@ -410,12 +410,14 @@ if (-not $text.Contains($needleField)) { throw "Action17 alias field seam not fo
 $text = $text.Replace($needleField, $needleField + $nl + ([char]9) + 'ref_texture t_OptiBridgeUpscaled; // Action17 native temporal result')
 Set-Content $targetHeader $text -NoNewline
 
-# Dynamic native temporal texture alias for final combine.
+# Dynamic native temporal texture alias for final combine. R4 defines the four
+# normal and four MSAA variants in the same blender source, so all eight must
+# bind the dynamic alias even though the Action17 prototype itself rejects MSAA.
 $blender = Join-Path $rendererDir "blender_combine.cpp"
 $text = Get-Content $blender -Raw
 $binding = 'C.r_dx10Texture("s_image", r2_RT_generic0);'
 $count = ([regex]::Matches($text, [regex]::Escape($binding))).Count
-if ($count -ne 4) { throw "Expected 4 final-combine image bindings, got $count" }
+if ($count -ne 8) { throw "Expected 8 final-combine image bindings, got $count" }
 $text = $text.Replace($binding, 'C.r_dx10Texture("s_image", "$user$optibridge_upscaled");')
 Set-Content $blender $text -NoNewline
 

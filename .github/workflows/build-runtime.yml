@@ -10,7 +10,7 @@ permissions:
 
 env:
   XRAY_REPO: https://github.com/themrdemonized/xray-monolith.git
-  XRAY_REF: 2026.7.22
+  XRAY_COMMIT: 9b491ffbfe5d529e817ceffed70214d0f03f62c5
   FSR2_REPO: https://github.com/optiscaler/FidelityFX-FSR2-DX11.git
   FSR2_REF: f2e3f86390746eb3f0bd1b28e91ea3cbc790ee76
   SOLUTION: src/engine-vs2022.sln
@@ -31,9 +31,14 @@ jobs:
       - name: Checkout locked X-Ray source
         shell: pwsh
         run: |
-          git clone --branch "$env:XRAY_REF" --depth 1 --recurse-submodules "$env:XRAY_REPO" xray-monolith
+          git clone "$env:XRAY_REPO" xray-monolith
+          git -C xray-monolith checkout --detach "$env:XRAY_COMMIT"
           git -C xray-monolith submodule update --init --recursive
-          git -C xray-monolith rev-parse HEAD
+          $actual = (git -C xray-monolith rev-parse HEAD).Trim()
+          if ($actual -ne $env:XRAY_COMMIT) {
+            throw "X-Ray source lock mismatch: expected $env:XRAY_COMMIT, got $actual"
+          }
+          Write-Host "Locked X-Ray commit: $actual"
 
       - name: Checkout pinned FSR2 DX11
         shell: pwsh
