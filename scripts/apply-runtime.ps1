@@ -90,10 +90,11 @@ if (-not $text.Contains($oldDsv)) { throw "Depth DSV insertion point not found" 
 $text = $text.Replace($oldDsv, $newDsv.Trim())
 Set-Content $hw $text -NoNewline
 
-# R4/DX11 transparent HUD compile policy: GAMMA's transparent_hud can select a
-# legacy-named pixel entrypoint while using DX11-only semantics (FOG/SV_Position).
-# Force that shader to SM5 BEFORE its first compile attempt. This is intentionally
-# narrow: other legacy-profile shaders keep the stock loader behavior.
+# R4/DX11 pixel shader target policy. GAMMA carries modern shaders with legacy
+# entrypoint/profile metadata such as main_ps_2_0 even when the shader body uses
+# DX11-era semantics and instruction counts. Preserve the selected entrypoint,
+# but promote a legacy ps_2_0 target to ps_5_0 BEFORE the first compile attempt.
+# This is scoped to the R4/DX11 renderer only.
 $rm = Join-Path $XrayRoot "src\Layers\xrRenderDX10\dx10ResourceManager_Resources.cpp"
 $text = Get-Content $rm -Raw
 $oldPsCompile = @'
@@ -107,10 +108,9 @@ $oldPsCompile = @'
 '@
 $newPsCompile = @'
 #if defined(USE_DX11)
-		if (0 == xr_strcmp(shName, "transparent_hud"))
+		if (0 == xr_strcmp(c_target, "ps_2_0"))
 		{
-			if (0 != xr_strcmp(c_target, "ps_5_0"))
-				Msg("* [OptiBridge] forcing pixel shader '%s' entry '%s' to ps_5_0", name, c_entry);
+			Msg("* [OptiBridge] promoting legacy pixel shader '%s' entry '%s' from ps_2_0 to ps_5_0", name, c_entry);
 			c_target = "ps_5_0";
 		}
 #endif
