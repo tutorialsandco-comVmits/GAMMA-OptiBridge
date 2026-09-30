@@ -70,6 +70,11 @@ jobs:
         run: |
           ./scripts/refine-transparent-hud-vs.ps1 -XrayRoot "./xray-monolith"
 
+      - name: Add Action 16 generalized DX11 vertex-entry policy
+        shell: pwsh
+        run: |
+          ./scripts/refine-dx11-vs-entry-policy.ps1 -XrayRoot "./xray-monolith"
+
       - name: Add Action 15 motion-vector jitter-cancellation diagnostic
         shell: pwsh
         run: |
