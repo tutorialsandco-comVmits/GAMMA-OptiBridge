@@ -20,6 +20,7 @@ struct OptiBridgeState
 {
     bool configLoaded = false;
     bool enabled = false;
+    bool jitterEnabled = true;
     bool contextValid = false;
     bool resourcesValid = false;
     bool firstDispatch = true;
@@ -96,6 +97,7 @@ bool ReadEnabled()
         char path[MAX_PATH];
         BuildIniPath(path);
         g_bridge.enabled = GetPrivateProfileIntA("OptiBridge", "Enabled", 0, path) != 0;
+        g_bridge.jitterEnabled = GetPrivateProfileIntA("OptiBridge", "Jitter", 1, path) != 0;
 
         char scaleText[32] = {};
         GetPrivateProfileStringA("OptiBridge", "RenderScale", "1.0", scaleText, sizeof(scaleText), path);
@@ -103,8 +105,10 @@ bool ReadEnabled()
         g_bridge.renderScale = _max(0.5f, _min(1.0f, g_bridge.renderScale));
 
         g_bridge.configLoaded = true;
-        Msg("* [OptiBridge] %s (%s), render scale %.4f", g_bridge.enabled ? "enabled" : "disabled", path,
-            g_bridge.renderScale);
+        Msg("* [OptiBridge] runtime v0.3.2-alpha");
+        Msg("* [OptiBridge] %s (%s), render scale %.4f, jitter %s",
+            g_bridge.enabled ? "enabled" : "disabled", path, g_bridge.renderScale,
+            g_bridge.jitterEnabled ? "on" : "off");
     }
     return g_bridge.enabled;
 }
@@ -231,8 +235,11 @@ bool CreateContext(u32 renderWidth, u32 renderHeight, u32 displayWidth, u32 disp
 
     g_bridge.contextValid = true;
     g_bridge.firstDispatch = true;
+    const int jitterPhaseCount = _max(1, ffxFsr2GetJitterPhaseCount((int)renderWidth, (int)displayWidth));
     Msg("* [OptiBridge] FSR2 input context created: %ux%u -> %ux%u", renderWidth, renderHeight, displayWidth,
         displayHeight);
+    Msg("* [OptiBridge] temporal jitter: %s, phase count %d, projection convention 2x/W,-2y/H",
+        g_bridge.jitterEnabled ? "on" : "off", jitterPhaseCount);
     return true;
 }
 
@@ -390,7 +397,7 @@ void GetConfiguredRenderSize(u32& width, u32& height)
 void CurrentJitter(float& px, float& py)
 {
     px = py = 0.f;
-    if (Device.dwWidth == 0)
+    if (!g_bridge.jitterEnabled || Device.dwWidth == 0)
         return;
 
     u32 renderWidth = 0, renderHeight = 0;
@@ -446,11 +453,11 @@ bool OptiBridge_GetJitterNdc(float& x, float& y)
     u32 renderWidth = 0, renderHeight = 0;
     GetConfiguredRenderSize(renderWidth, renderHeight);
 
-    // The SSFX shader constant expects texture-space offsets (the stock path
-    // divides pixel offsets by width/height). FSR2 jitterOffset itself remains
-    // in pixel units in the dispatch description.
-    x = px / float(renderWidth);
-    y = py / float(renderHeight);
+    // SSFX applies this constant directly to clip-space hpos.xy. Match the
+    // FSR2 projection convention: raw jitter is in render-resolution pixels,
+    // converted to NDC with 2/W and an inverted Y axis.
+    x = 2.f * px / float(renderWidth);
+    y = -2.f * py / float(renderHeight);
     return true;
 }
 

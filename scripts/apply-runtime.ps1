@@ -90,11 +90,10 @@ if (-not $text.Contains($oldDsv)) { throw "Depth DSV insertion point not found" 
 $text = $text.Replace($oldDsv, $newDsv.Trim())
 Set-Content $hw $text -NoNewline
 
-# R4/DX11 shader fallback: some GAMMA scope/HUD shaders contain legacy
-# main_ps_2_0 symbols even though their active code uses SM5 semantics such
-# as SV_Position. X-Ray's generic loader then selects the legacy entrypoint
-# and attempts a ps_2_0 compile. If that legacy compile fails, retry the
-# shader's normal main entrypoint; R4 maps it to ps_5_0.
+# R4/DX11 transparent HUD compile policy: GAMMA's transparent_hud can select a
+# legacy-named pixel entrypoint while using DX11-only semantics (FOG/SV_Position).
+# Force that shader to SM5 BEFORE its first compile attempt. This is intentionally
+# narrow: other legacy-profile shaders keep the stock loader behavior.
 $rm = Join-Path $XrayRoot "src\Layers\xrRenderDX10\dx10ResourceManager_Resources.cpp"
 $text = Get-Content $rm -Raw
 $oldPsCompile = @'
@@ -107,17 +106,17 @@ $oldPsCompile = @'
 			!FAILED(_hr),
 '@
 $newPsCompile = @'
-		HRESULT _hr = ::Render->shader_compile(name, (DWORD const*)data, size, c_entry, c_target,
-		                                      D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_ps);
-
 #if defined(USE_DX11)
-		if (FAILED(_hr) && 0 != xr_strcmp(c_entry, "main"))
+		if (0 == xr_strcmp(shName, "transparent_hud"))
 		{
-			Msg("* [OptiBridge] retrying pixel shader '%s' with DX11 main/SM5 fallback", name);
-			_hr = ::Render->shader_compile(name, (DWORD const*)data, size, "main", "ps_2_0",
-			                              D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_ps);
+			if (0 != xr_strcmp(c_target, "ps_5_0"))
+				Msg("* [OptiBridge] forcing pixel shader '%s' entry '%s' to ps_5_0", name, c_entry);
+			c_target = "ps_5_0";
 		}
 #endif
+
+		HRESULT const _hr = ::Render->shader_compile(name, (DWORD const*)data, size, c_entry, c_target,
+		                                             D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_ps);
 
 		VERIFY(SUCCEEDED(_hr));
 
