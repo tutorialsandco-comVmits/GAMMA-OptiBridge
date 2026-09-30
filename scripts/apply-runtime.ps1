@@ -90,6 +90,44 @@ if (-not $text.Contains($oldDsv)) { throw "Depth DSV insertion point not found" 
 $text = $text.Replace($oldDsv, $newDsv.Trim())
 Set-Content $hw $text -NoNewline
 
+# R4/DX11 shader fallback: some GAMMA scope/HUD shaders contain legacy
+# main_ps_2_0 symbols even though their active code uses SM5 semantics such
+# as SV_Position. X-Ray's generic loader then selects the legacy entrypoint
+# and attempts a ps_2_0 compile. If that legacy compile fails, retry the
+# shader's normal main entrypoint; R4 maps it to ps_5_0.
+$rm = Join-Path $XrayRoot "src\Layers\xrRenderDX10\dx10ResourceManager_Resources.cpp"
+$text = Get-Content $rm -Raw
+$oldPsCompile = @'
+		HRESULT const _hr = ::Render->shader_compile(name, (DWORD const*)data, size, c_entry, c_target,
+		                                             D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_ps);
+
+		VERIFY(SUCCEEDED(_hr));
+
+		CHECK_OR_EXIT(
+			!FAILED(_hr),
+'@
+$newPsCompile = @'
+		HRESULT _hr = ::Render->shader_compile(name, (DWORD const*)data, size, c_entry, c_target,
+		                                      D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_ps);
+
+#if defined(USE_DX11)
+		if (FAILED(_hr) && 0 != xr_strcmp(c_entry, "main"))
+		{
+			Msg("* [OptiBridge] retrying pixel shader '%s' with DX11 main/SM5 fallback", name);
+			_hr = ::Render->shader_compile(name, (DWORD const*)data, size, "main", "ps_2_0",
+			                              D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_ps);
+		}
+#endif
+
+		VERIFY(SUCCEEDED(_hr));
+
+		CHECK_OR_EXIT(
+			!FAILED(_hr),
+'@
+if (-not $text.Contains($oldPsCompile.Trim())) { throw "DX11 pixel shader compile block not found" }
+$text = $text.Replace($oldPsCompile.Trim(), $newPsCompile.Trim())
+Set-Content $rm $text -NoNewline
+
 # Replace stock 4-tap jitter with FSR2 Halton jitter only while OptiBridge is active.
 $binder = Join-Path $XrayRoot "src\Layers\xrRender\Blender_Recorder_StandartBinding.cpp"
 $text = Get-Content $binder -Raw
