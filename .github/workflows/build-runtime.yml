@@ -1,8 +1,8 @@
-name: Build MT OptiBridge Baseline
+name: Build MT OptiBridge Action17
 
 on:
   push:
-    branches: [ mt-baseline-2026.7.22 ]
+    branches: [ mt-action17-native-scene-scale ]
   workflow_dispatch:
 
 permissions:
@@ -13,11 +13,13 @@ env:
   XRAY_REF: 7beaeb8e2b51e700ae6ee47d82bff7c997467f87
   FSR2_REPO: https://github.com/optiscaler/FidelityFX-FSR2-DX11.git
   FSR2_REF: f2e3f86390746eb3f0bd1b28e91ea3cbc790ee76
+  ACTION17_PATCH_COMMIT: 28decc28fc49a117e6c71c3066ddc40b49c32bfe
+  ACTION17_PATCH_BLOB: 402ac5a4730c1f5af5fdf449582d3e5aaabde7b7
   SOLUTION: src/engine-vs2022.sln
 
 jobs:
   runtime-alpha:
-    name: MT native runtime ${{ matrix.configuration }}
+    name: MT Action17 ${{ matrix.configuration }}
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -27,6 +29,17 @@ jobs:
     steps:
       - name: Checkout OptiBridge
         uses: actions/checkout@v4
+
+      - name: Extract exact Action17 patch script
+        shell: pwsh
+        run: |
+          git fetch --depth 1 origin "$env:ACTION17_PATCH_COMMIT"
+          $spec = "$($env:ACTION17_PATCH_COMMIT):scripts/refine-native-scene-scale-v2.ps1"
+          $blob = (git rev-parse $spec).Trim()
+          Write-Host "Action17 patch blob: $blob"
+          if ($blob -ne $env:ACTION17_PATCH_BLOB) { throw "Action17 patch mismatch: expected $env:ACTION17_PATCH_BLOB, got $blob" }
+          New-Item -ItemType Directory -Force ".ci" | Out-Null
+          git show $spec | Set-Content -Encoding utf8 ".ci/refine-native-scene-scale-v2.ps1"
 
       - name: Checkout exact 2026.7.22 MT source
         shell: pwsh
@@ -85,13 +98,18 @@ jobs:
         run: |
           ./scripts/refine-jitter-cancellation.ps1 -XrayRoot "./xray-monolith"
 
-      - name: Build patched MT executable
+      - name: Add Action 17 native scene scale prototype
+        shell: pwsh
+        run: |
+          ./.ci/refine-native-scene-scale-v2.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Build patched MT Action17 executable
         working-directory: xray-monolith
         shell: pwsh
         run: |
           msbuild /m /p:Configuration=${{ matrix.configuration }} /p:Platform=x64 "$env:SOLUTION"
 
-      - name: Stage MT baseline artifact
+      - name: Stage MT Action17 artifact
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
@@ -101,13 +119,16 @@ jobs:
           Copy-Item $exe.FullName "artifact/$expected"
           Copy-Item "config/optibridge.ini" "artifact/optibridge.ini"
           @(
-            "OptiBridge MT baseline",
+            "OptiBridge MT Action17 staging",
             "X-Ray source family: STALKER-Anomaly-modded-exes-MT-TEST 2026.7.22",
             "X-Ray MT commit: $env:XRAY_REF",
             "FSR2 DX11 commit: $env:FSR2_REF",
+            "Action17 patch commit: $env:ACTION17_PATCH_COMMIT",
+            "Action17 patch blob: $env:ACTION17_PATCH_BLOB",
             "Configuration: ${{ matrix.configuration }}",
-            "OptiBridge baseline: Action15 + Action16; Action17 disabled"
+            "OptiBridge: Action15 + Action16 + Action17; NativeSceneScale defaults OFF"
           ) | Set-Content "artifact/provenance.txt"
+          if (-not (Select-String -Path "artifact/optibridge.ini" -Pattern '^NativeSceneScale=0$' -Quiet)) { throw "Staged config must default NativeSceneScale=0" }
           Get-FileHash "artifact/$expected" -Algorithm SHA256 | Format-List
 
       - name: Verify OptiScaler interception exports
@@ -124,10 +145,10 @@ jobs:
             if (-not ($exports -match $name)) { throw "Missing required export: $name" }
           }
 
-      - name: Upload MT native runtime alpha
+      - name: Upload MT Action17 runtime alpha
         uses: actions/upload-artifact@v4
         with:
-          name: optibridge-mt-baseline-${{ matrix.configuration }}
+          name: optibridge-mt-action17-${{ matrix.configuration }}
           path: artifact/*
           if-no-files-found: error
           retention-days: 7
