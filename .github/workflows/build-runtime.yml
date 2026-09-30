@@ -65,6 +65,11 @@ jobs:
         run: |
           ./scripts/apply-runtime.ps1 -XrayRoot "./xray-monolith" -Fsr2Root "./xray-monolith/external/fsr2dx11"
 
+      - name: Refine transparent HUD vertex policy
+        shell: pwsh
+        run: |
+          ./scripts/refine-transparent-hud-vs.ps1 -XrayRoot "./xray-monolith"
+
       - name: Build patched executable
         working-directory: xray-monolith
         shell: pwsh
