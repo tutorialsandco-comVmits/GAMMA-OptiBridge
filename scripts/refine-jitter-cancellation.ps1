@@ -24,4 +24,18 @@ if (-not $text.Contains($logOld)) { throw "FSR2 context success insertion point 
 $text = $text.Replace($logOld, $logNew.TrimEnd())
 
 Set-Content $runtime $text -NoNewline
+
+# MT Action17 staging adapter normalizes the extracted patch to LF while it
+# rewrites the render-entry seam. Restore Windows CRLF before Action17 executes,
+# because its guarded multiline here-string comparisons intentionally match the
+# checked-out X-Ray source files byte-for-byte apart from surrounding Trim().
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$action17Patch = Join-Path $repoRoot ".ci\refine-native-scene-scale-v2.ps1"
+if (Test-Path $action17Patch)
+{
+    $patchText = (Get-Content $action17Patch -Raw).Replace("`r`n", "`n").Replace("`n", "`r`n")
+    Set-Content -Encoding utf8 $action17Patch $patchText -NoNewline
+    Write-Host "OptiBridge MT Action17 patch line endings restored to CRLF."
+}
+
 Write-Host "OptiBridge Action #15 motion-vector jitter-cancellation diagnostic applied successfully."
