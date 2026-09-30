@@ -90,13 +90,43 @@ if (-not $text.Contains($oldDsv)) { throw "Depth DSV insertion point not found" 
 $text = $text.Replace($oldDsv, $newDsv.Trim())
 Set-Content $hw $text -NoNewline
 
-# R4/DX11 pixel shader target policy. GAMMA carries modern shaders with legacy
-# entrypoint/profile metadata such as main_ps_2_0 even when the shader body uses
-# DX11-era semantics and instruction counts. Preserve the selected entrypoint,
-# but promote a legacy ps_2_0 target to ps_5_0 BEFORE the first compile attempt.
-# This is scoped to the R4/DX11 renderer only.
+# R4/DX11 shader target policy. GAMMA carries modern shaders with legacy
+# entrypoint/profile metadata even when the shader body is intended for R4/DX11.
+# Preserve the selected entrypoint but promote legacy SM2 targets to SM5 before
+# the first compile attempt. Pixel and vertex targets both need this: the R4
+# error text says CreatePixelShader even when CreateVertexShader actually failed.
 $rm = Join-Path $XrayRoot "src\Layers\xrRenderDX10\dx10ResourceManager_Resources.cpp"
 $text = Get-Content $rm -Raw
+
+$oldVsCompile = @'
+		HRESULT const _hr = ::Render->shader_compile(name, (DWORD const*)data, size, c_entry, c_target,
+		                                             D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_vs);
+
+		VERIFY(SUCCEEDED(_hr));
+
+		CHECK_OR_EXIT(
+			!FAILED(_hr),
+'@
+$newVsCompile = @'
+#if defined(USE_DX11)
+		if (0 == xr_strcmp(c_target, "vs_2_0"))
+		{
+			Msg("* [OptiBridge] promoting legacy vertex shader '%s' entry '%s' from vs_2_0 to vs_5_0", name, c_entry);
+			c_target = "vs_5_0";
+		}
+#endif
+
+		HRESULT const _hr = ::Render->shader_compile(name, (DWORD const*)data, size, c_entry, c_target,
+		                                             D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_vs);
+
+		VERIFY(SUCCEEDED(_hr));
+
+		CHECK_OR_EXIT(
+			!FAILED(_hr),
+'@
+if (-not $text.Contains($oldVsCompile.Trim())) { throw "DX11 vertex shader compile block not found" }
+$text = $text.Replace($oldVsCompile.Trim(), $newVsCompile.Trim())
+
 $oldPsCompile = @'
 		HRESULT const _hr = ::Render->shader_compile(name, (DWORD const*)data, size, c_entry, c_target,
 		                                             D3D10_SHADER_PACK_MATRIX_ROW_MAJOR, (void*&)_ps);
