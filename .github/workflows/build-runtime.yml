@@ -70,6 +70,11 @@ jobs:
         run: |
           ./scripts/refine-transparent-hud-vs.ps1 -XrayRoot "./xray-monolith"
 
+      - name: Add Action 14 3DSS temporal bypass diagnostic
+        shell: pwsh
+        run: |
+          ./scripts/refine-3dss-temporal-bypass.ps1 -XrayRoot "./xray-monolith"
+
       - name: Build patched executable
         working-directory: xray-monolith
         shell: pwsh
