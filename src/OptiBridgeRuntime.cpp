@@ -436,12 +436,21 @@ bool OptiBridge_GetJitterNdc(float& x, float& y)
     if (!ReadEnabled() || Device.dwWidth == 0 || Device.dwHeight == 0)
         return false;
 
+    // Second-viewport scope frames are not temporally resolved by OptiBridge.
+    // Keep them unjittered so the scope camera does not visibly wobble.
+    if (Device.m_SecondViewport.IsSVPFrame())
+        return true;
+
     float px = 0.f, py = 0.f;
     CurrentJitter(px, py);
     u32 renderWidth = 0, renderHeight = 0;
     GetConfiguredRenderSize(renderWidth, renderHeight);
-    x = 2.f * px / float(renderWidth);
-    y = -2.f * py / float(renderHeight);
+
+    // The SSFX shader constant expects texture-space offsets (the stock path
+    // divides pixel offsets by width/height). FSR2 jitterOffset itself remains
+    // in pixel units in the dispatch description.
+    x = px / float(renderWidth);
+    y = py / float(renderHeight);
     return true;
 }
 
