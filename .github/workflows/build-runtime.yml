@@ -2,7 +2,7 @@ name: Build Native Runtime Alpha
 
 on:
   push:
-    branches: [ integration ]
+    branches: [ integration, action17-native-scene-scale ]
   workflow_dispatch:
 
 permissions:
@@ -79,6 +79,11 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/refine-jitter-cancellation.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action 17 native scene scale prototype
+        shell: pwsh
+        run: |
+          ./scripts/refine-native-scene-scale-v2.ps1 -XrayRoot "./xray-monolith"
 
       - name: Build patched executable
         working-directory: xray-monolith
