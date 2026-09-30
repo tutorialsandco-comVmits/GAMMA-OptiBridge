@@ -41,6 +41,91 @@ jobs:
           New-Item -ItemType Directory -Force ".ci" | Out-Null
           git show $spec | Set-Content -Encoding utf8 ".ci/refine-native-scene-scale-v2.ps1"
 
+      - name: Adapt pinned Action17 patch for MT render entry
+        shell: pwsh
+        run: |
+          $patchPath = ".ci/refine-native-scene-scale-v2.ps1"
+          $text = (Get-Content $patchPath -Raw).Replace("`r`n", "`n")
+
+          $stdOld = @(
+            "`tif (m_bFirstFrameAfterReset)",
+            "`t{",
+            "`t`tm_bFirstFrameAfterReset = false;",
+            "`t`treturn;",
+            "`t}",
+            "",
+            "`t//.`tVERIFY"
+          ) -join "`n"
+
+          $mtOld = @(
+            "`tif (m_bFirstFrameAfterReset)",
+            "`t{",
+            "`t`tfor (light* L : v_all_lights)//critical!!!",
+            "`t`t`tL->m_moving_frames = 0;",
+            "",
+            "`t`tm_bFirstFrameAfterReset = false;",
+            "`t`treturn;",
+            "`t}",
+            "",
+            "`tif ((Device.dwFrame % (u32)ps_r__tex_evict_interval) == 0)",
+            "`t`tdxRenderDeviceRender::Instance().Resources->EvictStalledTextures();",
+            "",
+            "`t//.`tVERIFY"
+          ) -join "`n"
+
+          $stdNew = @(
+            "`tif (m_bFirstFrameAfterReset)",
+            "`t{",
+            "`t`tm_bFirstFrameAfterReset = false;",
+            "`t`treturn;",
+            "`t}",
+            "",
+            "`t// Action17: all scene-space code now sees the configured low resolution.",
+            "`tOptiBridge_BeginSceneScale();",
+            "",
+            "`t//.`tVERIFY"
+          ) -join "`n"
+
+          $mtNew = @(
+            "`tif (m_bFirstFrameAfterReset)",
+            "`t{",
+            "`t`tfor (light* L : v_all_lights)//critical!!!",
+            "`t`t`tL->m_moving_frames = 0;",
+            "",
+            "`t`tm_bFirstFrameAfterReset = false;",
+            "`t`treturn;",
+            "`t}",
+            "",
+            "`tif ((Device.dwFrame % (u32)ps_r__tex_evict_interval) == 0)",
+            "`t`tdxRenderDeviceRender::Instance().Resources->EvictStalledTextures();",
+            "",
+            "`t// Action17: all scene-space code now sees the configured low resolution.",
+            "`tOptiBridge_BeginSceneScale();",
+            "",
+            "`t//.`tVERIFY"
+          ) -join "`n"
+
+          function Replace-ExactlyOnce([string]$source, [string]$from, [string]$to, [string]$label) {
+            $needle = $from.Trim()
+            $count = ([regex]::Matches($source, [regex]::Escape($needle))).Count
+            if ($count -ne 1) { throw "$label expected exactly once, got $count" }
+            return $source.Replace($needle, $to.Trim())
+          }
+
+          $text = Replace-ExactlyOnce $text $stdOld $mtOld "Action17 standard render-old seam"
+          $text = Replace-ExactlyOnce $text $stdNew $mtNew "Action17 standard render-new seam"
+
+          foreach ($marker in @(
+            'for (light* L : v_all_lights)//critical!!!',
+            'EvictStalledTextures();',
+            'OptiBridge_BeginSceneScale();'
+          )) {
+            if (-not $text.Contains($marker)) { throw "MT adapter verification missing: $marker" }
+          }
+
+          Set-Content -Encoding utf8 $patchPath $text -NoNewline
+          Write-Host "Action17 MT render-entry adapter applied successfully."
+
       - name: Checkout exact 2026.7.22 MT source
         shell: pwsh
         run: |
