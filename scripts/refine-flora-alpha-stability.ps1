@@ -84,7 +84,7 @@ bool OptiBridge_IsTreeAlphaPixelShader(LPCSTR name, LPCSTR target)
 
     // SSS/GAMMA dedicated foliage alpha-test family. Deliberately do not
     // touch generic deffer_base_aref shaders used by fences/grates/etc.
-    return 0 == strncmp(base, "deffer_tree_branch_aref_", 25);
+    return 0 == strncmp(base, "deffer_tree_branch_aref_", 24);
 }
 
 void OptiBridge_BuildTreeAlphaSource(
@@ -95,9 +95,9 @@ void OptiBridge_BuildTreeAlphaSource(
 {
     char prefix[512] = {};
     xr_sprintf(prefix,
-        "// OptiBridge Action22 tree alpha stabilization\\n"
-        "#define OPTIBRIDGE_FLORA_ALPHA_WIDTH_SCALE %.8ff\\n"
-        "#define clip(x) clip((x) + OPTIBRIDGE_FLORA_ALPHA_WIDTH_SCALE * fwidth(x))\\n",
+        "// OptiBridge Action22 tree alpha stabilization\n"
+        "#define OPTIBRIDGE_FLORA_ALPHA_WIDTH_SCALE %.8ff\n"
+        "#define clip(x) clip((x) + OPTIBRIDGE_FLORA_ALPHA_WIDTH_SCALE * fwidth(x))\n",
         g_optibridgeFloraAlpha.widthScale);
 
     storage.assign(prefix);
