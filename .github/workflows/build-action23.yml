@@ -1,0 +1,203 @@
+name: Build MT OptiBridge Action23
+
+on:
+  push:
+    branches: [ mt-action23-hashed-flora-coverage ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  XRAY_REPO: https://github.com/themrdemonized/xray-monolith.git
+  XRAY_REF: 7beaeb8e2b51e700ae6ee47d82bff7c997467f87
+  FSR2_REPO: https://github.com/optiscaler/FidelityFX-FSR2-DX11.git
+  FSR2_REF: f2e3f86390746eb3f0bd1b28e91ea3cbc790ee76
+  ACTION17_PATCH_COMMIT: 28decc28fc49a117e6c71c3066ddc40b49c32bfe
+  ACTION17_PATCH_BLOB: 402ac5a4730c1f5af5fdf449582d3e5aaabde7b7
+  SOLUTION: src/engine-vs2022.sln
+
+jobs:
+  runtime-alpha:
+    name: MT Action23 ${{ matrix.configuration }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [DX11, DX11-AVX]
+
+    steps:
+      - name: Checkout OptiBridge
+        uses: actions/checkout@v4
+
+      - name: Extract exact Action17 patch script
+        shell: pwsh
+        run: |
+          git fetch --depth 1 origin "$env:ACTION17_PATCH_COMMIT"
+          $spec = "$($env:ACTION17_PATCH_COMMIT):scripts/refine-native-scene-scale-v2.ps1"
+          $blob = (git rev-parse $spec).Trim()
+          if ($blob -ne $env:ACTION17_PATCH_BLOB) { throw "Action17 patch mismatch: expected $env:ACTION17_PATCH_BLOB, got $blob" }
+          New-Item -ItemType Directory -Force ".ci" | Out-Null
+          git show $spec | Set-Content -Encoding utf8 ".ci/refine-native-scene-scale-v2.ps1"
+
+      - name: Adapt pinned Action17 patch for MT render entry
+        shell: pwsh
+        run: |
+          $patchPath = ".ci/refine-native-scene-scale-v2.ps1"
+          $text = (Get-Content $patchPath -Raw).Replace("`r`n", "`n")
+          $stdOld = @("`tif (m_bFirstFrameAfterReset)","`t{","`t`tm_bFirstFrameAfterReset = false;","`t`treturn;","`t}","","`t//.`tVERIFY") -join "`n"
+          $mtOld = @("`tif (m_bFirstFrameAfterReset)","`t{","`t`tfor (light* L : v_all_lights)//critical!!!","`t`t`tL->m_moving_frames = 0;","","`t`tm_bFirstFrameAfterReset = false;","`t`treturn;","`t}","","`tif ((Device.dwFrame % (u32)ps_r__tex_evict_interval) == 0)","`t`tdxRenderDeviceRender::Instance().Resources->EvictStalledTextures();","","`t//.`tVERIFY") -join "`n"
+          $stdNew = @("`tif (m_bFirstFrameAfterReset)","`t{","`t`tm_bFirstFrameAfterReset = false;","`t`treturn;","`t}","","`t// Action17: all scene-space code now sees the configured low resolution.","`tOptiBridge_BeginSceneScale();","","`t//.`tVERIFY") -join "`n"
+          $mtNew = @("`tif (m_bFirstFrameAfterReset)","`t{","`t`tfor (light* L : v_all_lights)//critical!!!","`t`t`tL->m_moving_frames = 0;","","`t`tm_bFirstFrameAfterReset = false;","`t`treturn;","`t}","","`tif ((Device.dwFrame % (u32)ps_r__tex_evict_interval) == 0)","`t`tdxRenderDeviceRender::Instance().Resources->EvictStalledTextures();","","`t// Action17: all scene-space code now sees the configured low resolution.","`tOptiBridge_BeginSceneScale();","","`t//.`tVERIFY") -join "`n"
+          function Replace-ExactlyOnce([string]$source,[string]$from,[string]$to,[string]$label){$needle=$from.Trim();$count=([regex]::Matches($source,[regex]::Escape($needle))).Count;if($count -ne 1){throw "$label expected exactly once, got $count"};return $source.Replace($needle,$to.Trim())}
+          $text = Replace-ExactlyOnce $text $stdOld $mtOld "Action17 standard render-old seam"
+          $text = Replace-ExactlyOnce $text $stdNew $mtNew "Action17 standard render-new seam"
+          Set-Content -Encoding utf8 $patchPath $text -NoNewline
+
+      - name: Checkout exact 2026.7.22 MT source
+        shell: pwsh
+        run: |
+          git clone --filter=blob:none --no-checkout "$env:XRAY_REPO" xray-monolith
+          git -C xray-monolith fetch --depth 1 origin "$env:XRAY_REF"
+          git -C xray-monolith checkout --detach FETCH_HEAD
+          git -C xray-monolith submodule update --init --recursive
+          $actual = (git -C xray-monolith rev-parse HEAD).Trim()
+          if ($actual -ne $env:XRAY_REF) { throw "MT source mismatch: expected $env:XRAY_REF, got $actual" }
+
+      - name: Checkout pinned FSR2 DX11
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "xray-monolith/external" | Out-Null
+          git clone "$env:FSR2_REPO" "xray-monolith/external/fsr2dx11"
+          git -C "xray-monolith/external/fsr2dx11" checkout "$env:FSR2_REF"
+          $actual = (git -C "xray-monolith/external/fsr2dx11" rev-parse HEAD).Trim()
+          if ($actual -ne $env:FSR2_REF) { throw "FSR2 source mismatch: expected $env:FSR2_REF, got $actual" }
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Build pinned FSR2 DX11 libraries
+        shell: pwsh
+        run: |
+          $src = "xray-monolith/external/fsr2dx11"
+          $api = "$src/src/ffx-fsr2-api"
+          $bld = "$src/build-optibridge"
+          cmake -S $api -B $bld -A x64 -DFFX_FSR2_API_DX11=ON -DFFX_FSR2_API_DX12=OFF -DFFX_FSR2_API_VK=OFF -DFSR2_BUILD_AS_DLL=OFF
+          cmake --build $bld --config Release --target ffx_fsr2_api_x64 ffx_fsr2_api_dx11_x64 -- /m
+          New-Item -ItemType Directory -Force "$src/bin/ffx_fsr2_api" | Out-Null
+          Copy-Item "$api/bin/ffx_fsr2_api/*.lib" "$src/bin/ffx_fsr2_api" -Force
+
+      - name: Apply native runtime patch
+        shell: pwsh
+        run: ./scripts/apply-runtime.ps1 -XrayRoot "./xray-monolith" -Fsr2Root "./xray-monolith/external/fsr2dx11"
+
+      - name: Refine transparent HUD vertex policy
+        shell: pwsh
+        run: ./scripts/refine-transparent-hud-vs.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action16 generalized DX11 vertex-entry policy
+        shell: pwsh
+        run: ./scripts/refine-dx11-vs-entry-policy.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action15 motion-vector jitter-cancellation fix
+        shell: pwsh
+        run: ./scripts/refine-jitter-cancellation.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action17 native scene scale prototype
+        shell: pwsh
+        run: ./.ci/refine-native-scene-scale-v2.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action18 projection-space temporal jitter
+        shell: pwsh
+        run: ./scripts/refine-projection-jitter.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action19 temporal diagnostics
+        shell: pwsh
+        run: ./scripts/refine-temporal-diagnostics.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action20 flora reactive mask
+        shell: pwsh
+        run: ./scripts/refine-flora-reactive-mask.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action21 configurable flora mask radius
+        shell: pwsh
+        run: ./scripts/refine-flora-reactive-radius.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action22 flora alpha-test stabilization
+        shell: pwsh
+        run: ./scripts/refine-flora-alpha-stability.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Add Action23 hashed flora coverage
+        shell: pwsh
+        run: ./scripts/refine-flora-hashed-coverage.ps1 -XrayRoot "./xray-monolith"
+
+      - name: Verify Action23 source interception
+        shell: pwsh
+        run: |
+          $r4 = "xray-monolith/src/Layers/xrRenderPC_R4/r4.cpp"
+          foreach ($pattern in @(
+            'FloraAlphaStabilization',
+            'FloraHashedCoverage',
+            'FloraHashedCoverageScale',
+            'OptiBridgeFloraHash',
+            'I.tcdh.xy',
+            'getShaderSourceCrc32(compileSrcData, compileSrcDataLen',
+            'D3DCompile('
+          )) {
+            if (-not (Select-String -Path $r4 -SimpleMatch $pattern -Quiet)) { throw "Missing Action23 source marker: $pattern" }
+          }
+
+      - name: Build patched MT Action23 executable
+        working-directory: xray-monolith
+        shell: pwsh
+        run: msbuild /m /p:Configuration=${{ matrix.configuration }} /p:Platform=x64 "$env:SOLUTION"
+
+      - name: Stage MT Action23 artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          $expected = if ("${{ matrix.configuration }}" -eq "DX11-AVX") { "AnomalyDX11AVX.exe" } else { "AnomalyDX11.exe" }
+          $exe = Get-ChildItem -Path xray-monolith -Recurse -Filter $expected | Select-Object -First 1
+          if (-not $exe) { throw "Could not find $expected after build." }
+          Copy-Item $exe.FullName "artifact/$expected"
+          Copy-Item "config/optibridge.ini" "artifact/optibridge.ini"
+          @(
+            "OptiBridge MT Action23 hashed flora coverage",
+            "X-Ray source family: STALKER-Anomaly-modded-exes-MT-TEST 2026.7.22",
+            "X-Ray MT commit: $env:XRAY_REF",
+            "FSR2 DX11 commit: $env:FSR2_REF",
+            "Action17 patch commit: $env:ACTION17_PATCH_COMMIT",
+            "Action17 patch blob: $env:ACTION17_PATCH_BLOB",
+            "Configuration: ${{ matrix.configuration }}",
+            "OptiBridge: Action15 + Action16 + Action17 + Action18 + Action19 + Action20 + Action21 + Action22 + Action23 hashed flora coverage"
+          ) | Set-Content "artifact/provenance.txt"
+          if (-not (Select-String -Path "artifact/optibridge.ini" -Pattern '^NativeSceneScale=0$' -Quiet)) { throw "Staged config must default NativeSceneScale=0" }
+          if (-not (Select-String -Path "artifact/optibridge.ini" -Pattern '^FloraReactiveMask=0$' -Quiet)) { throw "Staged config must default FloraReactiveMask=0" }
+          if (-not (Select-String -Path "artifact/optibridge.ini" -Pattern '^FloraReactiveRadius=1$' -Quiet)) { throw "Staged config must default FloraReactiveRadius=1" }
+          if (-not (Select-String -Path "artifact/optibridge.ini" -Pattern '^FloraAlphaStabilization=0$' -Quiet)) { throw "Staged config must default FloraAlphaStabilization=0" }
+          if (-not (Select-String -Path "artifact/optibridge.ini" -Pattern '^FloraAlphaWidthScale=0.10$' -Quiet)) { throw "Staged config must preserve tested FloraAlphaWidthScale=0.10" }
+          if (-not (Select-String -Path "artifact/optibridge.ini" -Pattern '^FloraHashedCoverage=0$' -Quiet)) { throw "Staged config must default FloraHashedCoverage=0" }
+          if (-not (Select-String -Path "artifact/optibridge.ini" -Pattern '^FloraHashedCoverageScale=0.05$' -Quiet)) { throw "Staged config must default FloraHashedCoverageScale=0.05" }
+          Get-FileHash "artifact/$expected" -Algorithm SHA256 | Format-List
+
+      - name: Verify OptiScaler interception exports
+        shell: pwsh
+        run: |
+          $expected = if ("${{ matrix.configuration }}" -eq "DX11-AVX") { "AnomalyDX11AVX.exe" } else { "AnomalyDX11.exe" }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Sort-Object FullName | Select-Object -Last 1
+          if (-not $dumpbin) { throw "dumpbin.exe not found" }
+          $exports = & $dumpbin.FullName /exports "artifact/$expected"
+          $exports | Set-Content "artifact/exports.txt"
+          foreach ($name in @("ffxFsr2ContextCreate","ffxFsr2ContextDispatch","ffxFsr2ContextDestroy","ffxFsr2GetInterfaceDX11")) { if (-not ($exports -match $name)) { throw "Missing required export: $name" } }
+
+      - name: Upload MT Action23 runtime alpha
+        uses: actions/upload-artifact@v4
+        with:
+          name: optibridge-mt-action23-${{ matrix.configuration }}
+          path: artifact/*
+          if-no-files-found: error
+          retention-days: 7
