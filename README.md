@@ -33,9 +33,9 @@ OptiScaler's DX11 FSR2 input path searches for exported `ffxFsr2...` functions i
 
 ## Status
 
-**v0.5.0-rc1 finalization branch. Not yet a general public release.**
+**v0.5.0-rc2 finalization branch. Not yet a general public release.**
 
-The core path is functional and the current Quality checkpoint is based on the successful Action23 build. Development has moved from foliage/image-quality experimentation into broad regression, stability, performance and packaging validation.
+The core path is functional. RC2 keeps the validated Action22 alpha stabilization and disables Action23 hashed coverage after clear/bright-weather testing showed that the hash made high-contrast leaf/twig flicker more visible against bright sky.
 
 The validated Quality preset is stored in:
 
@@ -44,9 +44,9 @@ The validated Quality preset is stored in:
 The release-candidate test plan is stored in:
 
 - `docs/REGRESSION_CHECKLIST.md`
-- `docs/RC1_NOTES.md`
+- `docs/RC2_NOTES.md`
 
-The repository-safe `config/optibridge.ini` remains conservative and opt-in features remain disabled there. This prevents an experimental branch checkout from silently enabling reduced-resolution rendering for an unvalidated setup.
+The repository-safe `config/optibridge.ini` remains conservative and opt-in features remain disabled there.
 
 ## Current Quality checkpoint
 
@@ -63,13 +63,13 @@ FloraReactiveStrength=0.50
 FloraReactiveRadius=1
 FloraAlphaStabilization=1
 FloraAlphaWidthScale=0.10
-FloraHashedCoverage=1
+FloraHashedCoverage=0
 FloraHashedCoverageScale=0.05
 ```
 
 ## Release gates
 
-Before promotion beyond RC1:
+Before promotion beyond RC2:
 
 1. complete the regression checklist with the Quality preset unchanged;
 2. capture same-scene native `1.00` versus Quality `0.85` performance;
