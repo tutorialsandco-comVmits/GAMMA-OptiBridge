@@ -6,14 +6,14 @@ Experimental DirectX 11 temporal-upscaling bridge for **S.T.A.L.K.E.R. Anomaly /
 
 This repository currently targets:
 
-- X-Ray Monolith / Modded Exes **2026.7.22**
+- X-Ray Monolith / Modded Exes **2026.7.22** source baseline
 - upstream source commit `7beaeb8e2b51e700ae6ee47d82bff7c997467f87`
 - DirectX 11: `AnomalyDX11.exe`
 - DirectX 11 AVX: `AnomalyDX11AVX.exe`
 - FidelityFX FSR 2.2.1 DX11 interface
 - OptiScaler DX11 FSR2 input interception
 - NVIDIA RTX target: DLSS through OptiScaler
-- Existing ReShade `dxgi.dll` is intentionally left untouched
+- existing ReShade `dxgi.dll` is intentionally left untouched
 
 ## Architecture
 
@@ -33,38 +33,33 @@ OptiScaler's DX11 FSR2 input path searches for exported `ffxFsr2...` functions i
 
 ## Status
 
-**v0.5.0-rc3 finalization branch. Not yet a general public release.**
+**v0.5.0-rc3 release-hardening branch. Not yet a general public release.**
 
-RC3 uses the corrected Action24 alpha-only foliage mip-bias path. Bright-weather testing showed it reaches the same practical foliage-stability range as the global `r__tf_mipbias 0.25` diagnostic without globally biasing scene textures.
+The corrected Action24 renderer path is locked for RC3. The remaining work is release hardening and broad regression, not additional foliage micro-tuning unless a new reproducible rendering defect appears.
 
-The RC3 preset set is now validated at 2560x1080:
+RC3 uses alpha-only foliage mip bias to stabilize minified leaves/twigs without globally biasing scene texture LOD. Action23 hashed coverage remains compiled as an experimental path but is disabled because bright-weather testing made high-contrast foliage flicker worse.
 
-| Preset | RenderScale | Scene resolution | Observed checkpoint |
+## Validated presets
+
+All presets use the same corrected Action24 executable and shared temporal/flora settings. Only `RenderScale` changes.
+
+| Preset | RenderScale | Input at 2560x1080 | Development-system checkpoint |
 | --- | ---: | ---: | ---: |
-| Native reference | 1.00 | 2560x1080 | ~40.6 FPS / 24.65 ms |
-| Quality | 0.90 | 2304x972 | ~48.2 FPS / 20.75 ms |
-| Balanced | 0.85 | 2176x918 | ~52.6 FPS / 19.03 ms |
-| Performance | 0.75 | 1920x810 | ~58.9 FPS / 16.98 ms |
+| Native | 1.00 | 2560x1080 | ~40.6 FPS |
+| Quality | 0.90 | 2304x972 | ~48.2 FPS |
+| Balanced | 0.85 | 2176x918 | ~52.6 FPS |
+| Performance | 0.75 | 1920x810 | ~58.9 FPS |
 
-The benchmark scene showed approximately +18.7% FPS for Quality, +29.6% for Balanced, and +45.1% for Performance versus the 1.00 native reference. These are scene/system-specific checkpoints, not universal performance guarantees.
+Quality `0.90` is the preferred default. The performance numbers above are same-scene development-system measurements, not universal guarantees.
 
-Preset files:
+Tracked preset files:
 
 - `config/optibridge-native.ini`
 - `config/optibridge-quality.ini`
 - `config/optibridge-balanced.ini`
 - `config/optibridge-performance.ini`
 
-The release-candidate test plan is stored in:
-
-- `docs/REGRESSION_CHECKLIST.md`
-- `docs/RC3_NOTES.md`
-
-The repository-safe `config/optibridge.ini` remains conservative and opt-in features remain disabled there.
-
-## Shared RC3 temporal / foliage settings
-
-Only `RenderScale` changes between the four validated presets.
+## Locked shared RC3 settings
 
 ```ini
 NativeSceneScale=1
@@ -89,31 +84,64 @@ Global game setting for RC3 validation:
 r__tf_mipbias 0
 ```
 
-## Preset intent
+## Build hashes
 
-- **Native 1.00**: reference / Ultra comparison mode; no scene-resolution reduction.
-- **Quality 0.90**: preferred default. Very close to native image quality with a meaningful performance gain.
-- **Balanced 0.85**: larger gain with a small but visible reduction in fine foliage and distant detail.
-- **Performance 0.75**: substantial gain; softer fine foliage and distant detail are expected.
+Validated non-AVX RC3 binary:
 
-## Remaining release gates
+```text
+AnomalyDX11.exe
+21b93e59853aad1f2c9e469876bd5126e0b1a0ece279cba445a597d674a68b54
+```
 
-Before promotion beyond RC3:
+Corrected Action24 AVX CI binary:
 
-1. complete broad regression across maps, weather, scopes/ADS, PDA/UI, saves, loading transitions, and combat;
-2. validate installation, backup, replacement and restore behavior;
-3. verify both regular DX11 and AVX package paths;
-4. keep RTSS/third-party overlay hook compatibility separate from renderer correctness if external injection conflicts appear.
+```text
+AnomalyDX11AVX.exe
+d0404a340c62a84309b1c32623206996961ada58d47a88a0dde002060a2424b3
+```
+
+The AVX build compiled successfully but still requires runtime parity validation before it is included in a release package.
+
+## Managed install / restore
+
+RC3 now includes hash-aware scripts:
+
+- `scripts/install-rc3.ps1`
+- `scripts/uninstall-rc3.ps1`
+- `scripts/verify-rc3.ps1`
+- `scripts/apply-preset.cmd`
+
+The installer:
+
+- verifies the payload hash;
+- accepts only the known validated clean non-AVX baseline or an existing managed RC3 install;
+- creates a timestamped backup before replacing the clean baseline;
+- preserves prior OptiBridge config/preset files;
+- leaves `dxgi.dll` and `winmm.dll` unchanged and verifies that they stayed unchanged;
+- writes a managed-install manifest used by restore.
+
+The restore script verifies the original backup hash and refuses to overwrite a current executable that has been changed since RC3 was installed.
+
+See `docs/INSTALLATION.md` for details.
+
+## Regression / release gates
+
+The current checklist is `docs/REGRESSION_CHECKLIST.md`.
+
+Major remaining gates include:
+
+1. exercise clean install -> verify -> managed restore against the validated clean baseline and confirm the original SHA-256 is reproduced;
+2. complete old-save/new-save/new-game and repeated save/load regression;
+3. complete scope/ADS/PDA/UI/map-transition/weather/combat tests;
+4. complete the Quality/Balanced/Performance stability soak;
+5. isolate third-party overlay/injector crashes from core OptiBridge stability;
+6. runtime-test the corrected Action24 AVX executable before including AVX in the release package.
 
 ## Safety
 
-The eventual installer must:
+The release path must never silently overwrite an unknown Modded Exes build. Unknown executable hashes are a hard stop until explicitly validated.
 
-1. verify the user's original executable hash,
-2. back up the original executable,
-3. preserve the existing ReShade `dxgi.dll`,
-4. install OptiScaler through a non-conflicting proxy,
-5. provide an uninstall/restore path.
+The OptiBridge installer does not install, replace or delete ReShade or OptiScaler proxy DLLs.
 
 ## Upstream projects
 
