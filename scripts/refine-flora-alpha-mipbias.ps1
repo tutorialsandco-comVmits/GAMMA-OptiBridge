@@ -100,7 +100,8 @@ $new = @'
             "// OptiBridge Action24 alpha-only foliage mip bias\n"
             "#define OPTIBRIDGE_FLORA_ALPHA_WIDTH_SCALE %.8ff\n"
             "#define OPTIBRIDGE_FLORA_ALPHA_MIP_BIAS %.8ff\n"
-            "#define clip(x) clip((s_base.SampleBias(smp_base, I.tcdh.xy, OPTIBRIDGE_FLORA_ALPHA_MIP_BIAS).a - def_aref) + OPTIBRIDGE_FLORA_ALPHA_WIDTH_SCALE * fwidth(x))\n",
+            "#define OPTIBRIDGE_FLORA_ALPHA_EXPR (s_base.SampleBias(smp_base, I.tcdh.xy, OPTIBRIDGE_FLORA_ALPHA_MIP_BIAS).a - def_aref)\n"
+            "#define clip(x) clip(OPTIBRIDGE_FLORA_ALPHA_EXPR + OPTIBRIDGE_FLORA_ALPHA_WIDTH_SCALE * fwidth(OPTIBRIDGE_FLORA_ALPHA_EXPR))\n",
             alphaBias,
             g_optibridgeFloraAlpha.alphaMipBias);
     }
