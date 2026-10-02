@@ -33,9 +33,9 @@ OptiScaler's DX11 FSR2 input path searches for exported `ffxFsr2...` functions i
 
 ## Status
 
-**v0.5.0-rc2 finalization branch. Not yet a general public release.**
+**v0.5.0-rc3 finalization branch. Not yet a general public release.**
 
-The core path is functional. RC2 keeps the validated Action22 alpha stabilization and disables Action23 hashed coverage after clear/bright-weather testing showed that the hash made high-contrast leaf/twig flicker more visible against bright sky.
+The core path is functional. RC3 promotes the corrected Action24 alpha-only foliage mip-bias path after bright-weather testing showed it reaches the same practical stability range as the global `r__tf_mipbias 0.25` diagnostic without globally softening scene textures.
 
 The validated Quality preset is stored in:
 
@@ -44,14 +44,14 @@ The validated Quality preset is stored in:
 The release-candidate test plan is stored in:
 
 - `docs/REGRESSION_CHECKLIST.md`
-- `docs/RC2_NOTES.md`
+- `docs/RC3_NOTES.md`
 
 The repository-safe `config/optibridge.ini` remains conservative and opt-in features remain disabled there.
 
 ## Current Quality checkpoint
 
 ```ini
-RenderScale=0.85
+RenderScale=0.90
 NativeSceneScale=1
 ProjectionJitter=1
 JitterScale=0.35
@@ -63,17 +63,24 @@ FloraReactiveStrength=0.50
 FloraReactiveRadius=1
 FloraAlphaStabilization=1
 FloraAlphaWidthScale=0.10
+FloraAlphaMipBias=0.25
 FloraHashedCoverage=0
 FloraHashedCoverageScale=0.05
 ```
 
+Global game setting for RC3 validation:
+
+```text
+r__tf_mipbias 0
+```
+
 ## Release gates
 
-Before promotion beyond RC2:
+Before promotion beyond RC3:
 
 1. complete the regression checklist with the Quality preset unchanged;
-2. capture same-scene native `1.00` versus Quality `0.85` performance;
-3. test `RenderScale=0.75` only as a separate single-variable experiment after Quality regression is clean;
+2. capture same-scene native `1.00` versus Quality `0.90` performance;
+3. test lower render scales only as separate single-variable experiments;
 4. derive Balanced/Performance presets only from validated lower-scale results;
 5. validate backup/install/restore behavior before distributing an installer.
 
