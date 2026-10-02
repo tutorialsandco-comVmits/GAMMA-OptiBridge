@@ -35,11 +35,25 @@ OptiScaler's DX11 FSR2 input path searches for exported `ffxFsr2...` functions i
 
 **v0.5.0-rc3 finalization branch. Not yet a general public release.**
 
-The core path is functional. RC3 promotes the corrected Action24 alpha-only foliage mip-bias path after bright-weather testing showed it reaches the same practical stability range as the global `r__tf_mipbias 0.25` diagnostic without globally softening scene textures.
+RC3 uses the corrected Action24 alpha-only foliage mip-bias path. Bright-weather testing showed it reaches the same practical foliage-stability range as the global `r__tf_mipbias 0.25` diagnostic without globally biasing scene textures.
 
-The validated Quality preset is stored in:
+The RC3 preset set is now validated at 2560x1080:
 
+| Preset | RenderScale | Scene resolution | Observed checkpoint |
+| --- | ---: | ---: | ---: |
+| Native reference | 1.00 | 2560x1080 | ~40.6 FPS / 24.65 ms |
+| Quality | 0.90 | 2304x972 | ~48.2 FPS / 20.75 ms |
+| Balanced | 0.85 | 2176x918 | ~52.6 FPS / 19.03 ms |
+| Performance | 0.75 | 1920x810 | ~58.9 FPS / 16.98 ms |
+
+The benchmark scene showed approximately +18.7% FPS for Quality, +29.6% for Balanced, and +45.1% for Performance versus the 1.00 native reference. These are scene/system-specific checkpoints, not universal performance guarantees.
+
+Preset files:
+
+- `config/optibridge-native.ini`
 - `config/optibridge-quality.ini`
+- `config/optibridge-balanced.ini`
+- `config/optibridge-performance.ini`
 
 The release-candidate test plan is stored in:
 
@@ -48,10 +62,11 @@ The release-candidate test plan is stored in:
 
 The repository-safe `config/optibridge.ini` remains conservative and opt-in features remain disabled there.
 
-## Current Quality checkpoint
+## Shared RC3 temporal / foliage settings
+
+Only `RenderScale` changes between the four validated presets.
 
 ```ini
-RenderScale=0.90
 NativeSceneScale=1
 ProjectionJitter=1
 JitterScale=0.35
@@ -74,15 +89,21 @@ Global game setting for RC3 validation:
 r__tf_mipbias 0
 ```
 
-## Release gates
+## Preset intent
+
+- **Native 1.00**: reference / Ultra comparison mode; no scene-resolution reduction.
+- **Quality 0.90**: preferred default. Very close to native image quality with a meaningful performance gain.
+- **Balanced 0.85**: larger gain with a small but visible reduction in fine foliage and distant detail.
+- **Performance 0.75**: substantial gain; softer fine foliage and distant detail are expected.
+
+## Remaining release gates
 
 Before promotion beyond RC3:
 
-1. complete the regression checklist with the Quality preset unchanged;
-2. capture same-scene native `1.00` versus Quality `0.90` performance;
-3. test lower render scales only as separate single-variable experiments;
-4. derive Balanced/Performance presets only from validated lower-scale results;
-5. validate backup/install/restore behavior before distributing an installer.
+1. complete broad regression across maps, weather, scopes/ADS, PDA/UI, saves, loading transitions, and combat;
+2. validate installation, backup, replacement and restore behavior;
+3. verify both regular DX11 and AVX package paths;
+4. keep RTSS/third-party overlay hook compatibility separate from renderer correctness if external injection conflicts appear.
 
 ## Safety
 
