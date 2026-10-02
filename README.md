@@ -9,12 +9,46 @@
 
 Experimental DirectX 11 temporal-upscaling bridge for **S.T.A.L.K.E.R. Anomaly / GAMMA**.
 
+## Installation / trying the archived build
+
+Use the complete step-by-step guide:
+
+### **[Full OptiBridge + OptiScaler installation tutorial](docs/FULL_INSTALLATION_TUTORIAL.md)**
+
+It covers:
+
+- the exact required **Modded Exes MT-TEST 2026.7.22** build;
+- the final compiled OptiBridge RC3 release;
+- **OptiScaler 0.9.4-final** installation;
+- the validated **DLSS 310.9.1** setup;
+- GAMMA/ReShade coexistence (`dxgi.dll` for ReShade, `winmm.dll` for OptiScaler);
+- presets and expected render resolutions;
+- verification and smoke testing;
+- common failure modes;
+- complete uninstall/recovery.
+
+Required Modded Exes release:
+
+https://github.com/themrdemonized/xray-monolith/releases/tag/2026.7.22
+
+Required MT-TEST archive:
+
+https://github.com/themrdemonized/xray-monolith/releases/download/2026.7.22/STALKER-Anomaly-modded-exes-MT-TEST_2026.7.22.zip
+
+Final compiled OptiBridge release:
+
+https://github.com/tutorialsandco-comVmits/GAMMA-OptiBridge/releases/tag/v0.5.0-rc3-abandoned
+
+> [!IMPORTANT]
+> GitHub's green **Code -> Download ZIP** button contains source code only. To actually run OptiBridge, download `GAMMA_OptiBridge_v0.5.0-rc3_abandoned.zip` from the **Releases** page.
+
 ## Continue this project
 
 Start here:
 
 - **`docs/PROJECT_HANDOFF.md`** — full technical state, experiment history, hashes, unresolved work and recommended continuation points.
 - **`docs/AI_GENERATION_DISCLOSURE.md`** — explicit provenance, limitations and review warning for this almost entirely GPT-5.6 Sol-generated codebase.
+- **`docs/FULL_INSTALLATION_TUTORIAL.md`** — complete Modded Exes + OptiBridge + OptiScaler + DLSS installation and troubleshooting guide.
 - **`docs/UNINSTALL_AND_RESTORE.md`** — how to remove OptiBridge and return GAMMA to the original Modded Exes setup.
 - **`docs/RC3_NOTES.md`** — final renderer checkpoint.
 - **`docs/REGRESSION_CHECKLIST.md`** — unfinished release-validation work.
