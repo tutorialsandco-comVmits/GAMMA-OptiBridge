@@ -1,0 +1,163 @@
+name: Publish final abandoned RC3 release
+
+# Runs automatically only when this workflow file itself changes.
+# The project is abandoned; reruns are also available manually.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/publish-final-abandoned-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  VALIDATED_RUN_ID: '36957013701'
+  VALIDATED_ARTIFACT: optibridge-mt-action24-DX11
+  VALIDATED_EXE_SHA256: 21b93e59853aad1f2c9e469876bd5126e0b1a0ece279cba445a597d674a68b54
+  RELEASE_TAG: v0.5.0-rc3-abandoned
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout final repository state
+        uses: actions/checkout@v4
+
+      - name: Download exact validated Action24 DX11 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.VALIDATED_ARTIFACT }}
+          path: validated
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.VALIDATED_RUN_ID }}
+
+      - name: Verify validated executable hash
+        shell: pwsh
+        run: |
+          $exe = 'validated/AnomalyDX11.exe'
+          if (-not (Test-Path $exe)) { throw 'Validated artifact is missing AnomalyDX11.exe.' }
+          $sha = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
+          if ($sha -ne $env:VALIDATED_EXE_SHA256) {
+            throw "Validated executable hash mismatch: expected $env:VALIDATED_EXE_SHA256, got $sha"
+          }
+
+      - name: Build final archive package
+        shell: pwsh
+        run: |
+          $root = 'package/GAMMA_OptiBridge_v0.5.0-rc3_abandoned'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          New-Item -ItemType Directory -Force "$root/OptiBridge_Presets" | Out-Null
+          New-Item -ItemType Directory -Force "$root/scripts" | Out-Null
+          New-Item -ItemType Directory -Force "$root/docs" | Out-Null
+
+          Copy-Item 'validated/AnomalyDX11.exe' "$root/AnomalyDX11.exe"
+          Copy-Item 'config/optibridge-quality.ini' "$root/optibridge.ini"
+          Copy-Item 'config/optibridge-native.ini' "$root/OptiBridge_Presets/optibridge-native.ini"
+          Copy-Item 'config/optibridge-quality.ini' "$root/OptiBridge_Presets/optibridge-quality.ini"
+          Copy-Item 'config/optibridge-balanced.ini' "$root/OptiBridge_Presets/optibridge-balanced.ini"
+          Copy-Item 'config/optibridge-performance.ini' "$root/OptiBridge_Presets/optibridge-performance.ini"
+
+          Copy-Item 'scripts/apply-preset.cmd' "$root/APPLY_OPTIBRIDGE_PRESET.cmd"
+          Copy-Item 'INSTALL_OPTIBRIDGE.cmd' "$root/INSTALL_OPTIBRIDGE.cmd"
+          Copy-Item 'UNINSTALL_OPTIBRIDGE.cmd' "$root/UNINSTALL_OPTIBRIDGE.cmd"
+          Copy-Item 'scripts/install-final-archive.ps1' "$root/scripts/install-final-archive.ps1"
+          Copy-Item 'scripts/uninstall-final-archive.ps1' "$root/scripts/uninstall-final-archive.ps1"
+
+          Copy-Item 'README.md' "$root/docs/PROJECT_README.md"
+          Copy-Item 'docs/PROJECT_HANDOFF.md' "$root/docs/PROJECT_HANDOFF.md"
+          Copy-Item 'docs/AI_GENERATION_DISCLOSURE.md' "$root/docs/AI_GENERATION_DISCLOSURE.md"
+          Copy-Item 'docs/REGRESSION_CHECKLIST.md' "$root/docs/REGRESSION_CHECKLIST.md"
+
+          @'
+          GAMMA OptiBridge v0.5.0-rc3 — ABANDONED ARCHIVE
+
+          IMPORTANT
+          This project was almost entirely vibe-coded with OpenAI GPT-5.6 Sol.
+          The original owner has no programming background. It has not received an
+          independent professional code or security review. Treat it as an experimental
+          prototype/investigation record, not production-ready software.
+
+          VALIDATED BINARY
+          AnomalyDX11.exe SHA-256:
+          21b93e59853aad1f2c9e469876bd5126e0b1a0ece279cba445a597d674a68b54
+
+          INSTALL
+          Run INSTALL_OPTIBRIDGE.cmd. It backs up your current AnomalyDX11.exe and
+          OptiBridge config before installing the archived RC3 binary.
+
+          UNINSTALL
+          Run UNINSTALL_OPTIBRIDGE.cmd to restore the exact executable/config backup
+          created by the installer.
+
+          EXTERNAL REQUIREMENT
+          OptiScaler is NOT bundled in this archive. Install/configure OptiScaler
+          separately if you intend to run OptiBridge. ReShade/proxy DLLs are not
+          installed or modified by this archive installer.
+
+          DEFAULT PRESET
+          Quality / RenderScale 0.90.
+
+          PROJECT STATUS
+          Abandoned / unmaintained since 2026-10-02. Forking/continuation welcome.
+          See docs/PROJECT_HANDOFF.md before continuing development.
+          '@ | Set-Content "$root/README_FIRST.txt"
+
+          $lines = @()
+          Get-ChildItem -Path $root -Recurse -File | ForEach-Object {
+            $rel = $_.FullName.Substring((Resolve-Path $root).Path.Length + 1).Replace('\\','/')
+            $sha = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            $lines += "$sha  $rel"
+          }
+          $lines | Set-Content "$root/SHA256SUMS.txt"
+
+          $zip = 'GAMMA_OptiBridge_v0.5.0-rc3_abandoned.zip'
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "$root/*" -DestinationPath $zip -CompressionLevel Optimal
+          Get-FileHash -Algorithm SHA256 $zip | Format-List
+
+      - name: Upload permanent-style workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GAMMA_OptiBridge_v0.5.0-rc3_abandoned
+          path: GAMMA_OptiBridge_v0.5.0-rc3_abandoned.zip
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create or update final GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $asset = 'GAMMA_OptiBridge_v0.5.0-rc3_abandoned.zip'
+          $notes = @'
+          # GAMMA OptiBridge v0.5.0-rc3 — abandoned archive
+
+          **ABANDONED / UNMAINTAINED as of 2026-10-02.**
+
+          This is the final archived non-AVX RC3 package. It contains the exact validated
+          corrected-Action24 `AnomalyDX11.exe`, four presets, backup-based install/uninstall
+          helpers, checksums, project handoff documentation and the AI-generation disclosure.
+
+          The project was almost entirely vibe-coded with **OpenAI GPT-5.6 Sol**. The original
+          owner has no programming background and cannot independently audit the implementation.
+          There was no independent professional code/security review. Use at your own risk and
+          independently review the source before relying on it.
+
+          Validated executable SHA-256:
+          `21b93e59853aad1f2c9e469876bd5126e0b1a0ece279cba445a597d674a68b54`
+
+          OptiScaler itself is not redistributed in this archive and must be installed separately.
+          The AVX binary is deliberately excluded because runtime parity was not completed.
+          '@
+
+          if (gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null) {
+            gh release upload $tag $asset --clobber --repo $env:GITHUB_REPOSITORY
+            $notes | gh release edit $tag --notes-file - --prerelease --repo $env:GITHUB_REPOSITORY
+          } else {
+            $notes | gh release create $tag $asset --title 'GAMMA OptiBridge v0.5.0-rc3 (Abandoned Archive)' --notes-file - --prerelease --repo $env:GITHUB_REPOSITORY
+          }
