@@ -1,65 +1,91 @@
 # GAMMA OptiBridge
 
+> [!WARNING]
+> **ABANDONED / UNMAINTAINED — 2026-10-02**  
+> Active development has ended. No further fixes, releases or support are planned by the original project owner. The repository and all experimental branches are intentionally preserved so anyone interested can continue the work.
+
 Experimental DirectX 11 temporal-upscaling bridge for **S.T.A.L.K.E.R. Anomaly / GAMMA**.
 
-## Locked target
+## Continue this project
 
-This repository currently targets:
+Start here:
 
-- X-Ray Monolith / Modded Exes **2026.7.22** source baseline
-- upstream source commit `7beaeb8e2b51e700ae6ee47d82bff7c997467f87`
-- DirectX 11: `AnomalyDX11.exe`
-- DirectX 11 AVX: `AnomalyDX11AVX.exe`
-- FidelityFX FSR 2.2.1 DX11 interface
-- OptiScaler DX11 FSR2 input interception
-- NVIDIA RTX target: DLSS through OptiScaler
-- existing ReShade `dxgi.dll` is intentionally left untouched
+- **`docs/PROJECT_HANDOFF.md`** — full technical state, experiment history, hashes, unresolved work and recommended continuation points.
+- **`docs/UNINSTALL_AND_RESTORE.md`** — how to remove OptiBridge and return GAMMA to the original Modded Exes setup.
+- **`docs/RC3_NOTES.md`** — final renderer checkpoint.
+- **`docs/REGRESSION_CHECKLIST.md`** — unfinished release-validation work.
+
+The final development state is on `main` and is identical in lineage to `release-candidate-v0.5.0-rc3` plus the abandonment/handoff documentation.
+
+## Why development stopped
+
+OptiBridge became functional, but on the reference system the project owner preferred native GAMMA rendering combined with Lossless Scaling. Sub-native OptiBridge improved real rendered FPS, but the remaining reduction in fine-detail image quality was not worth that gain for this particular setup.
+
+The owner's final reference experience was roughly:
+
+```text
+Native GAMMA:                  ~30–40 FPS
+Native + Lossless Scaling:     ~60–70 displayed FPS
+```
+
+Lossless Scaling preserved the native source image better but introduced some noticeable input latency. This is a subjective project-owner tradeoff, not a universal performance or image-quality conclusion.
+
+## Last validated renderer state
+
+Final renderer: **v0.5.0-rc3 / corrected Action24**.
+
+Validated non-AVX executable:
+
+```text
+AnomalyDX11.exe
+SHA-256: 21b93e59853aad1f2c9e469876bd5126e0b1a0ece279cba445a597d674a68b54
+```
+
+Corrected Action24 AVX CI executable:
+
+```text
+AnomalyDX11AVX.exe
+SHA-256: d0404a340c62a84309b1c32623206996961ada58d47a88a0dde002060a2424b3
+```
+
+The AVX build compiled successfully but was **not runtime-parity validated** before abandonment.
+
+Source provenance:
+
+```text
+X-Ray MT source: 7beaeb8e2b51e700ae6ee47d82bff7c997467f87
+FSR2 DX11:        f2e3f86390746eb3f0bd1b28e91ea3cbc790ee76
+OptiScaler used:  v0.9.4-final
+```
 
 ## Architecture
 
 ```text
 X-Ray R4 renderer
-  -> reduced-resolution scene colour
+  -> reduced-resolution 3D scene colour
   -> depth
   -> SSFX motion vectors
   -> projection-space temporal jitter
   -> FSR2 DX11 API exported by AnomalyDX11.exe
-  -> OptiScaler intercepts the FSR2 dispatch
+  -> OptiScaler intercepts FSR2.X
   -> DLSS / XeSS / FSR backend
-  -> X-Ray post-processing / native-resolution UI and presentation
+  -> native-resolution post-processing / UI / presentation
 ```
 
-OptiScaler's DX11 FSR2 input path searches for exported `ffxFsr2...` functions in the game executable. The build therefore links the DX11 FSR2 API directly into the executable and exports those entry points.
+## Final validated presets
 
-## Status
+All presets use the same corrected Action24 executable. Only `RenderScale` changes.
 
-**v0.5.0-rc3 release-hardening branch. Not yet a general public release.**
-
-The corrected Action24 renderer path is locked for RC3. The remaining work is release hardening and broad regression, not additional foliage micro-tuning unless a new reproducible rendering defect appears.
-
-RC3 uses alpha-only foliage mip bias to stabilize minified leaves/twigs without globally biasing scene texture LOD. Action23 hashed coverage remains compiled as an experimental path but is disabled because bright-weather testing made high-contrast foliage flicker worse.
-
-## Validated presets
-
-All presets use the same corrected Action24 executable and shared temporal/flora settings. Only `RenderScale` changes.
-
-| Preset | RenderScale | Input at 2560x1080 | Development-system checkpoint |
+| Preset | RenderScale | Input at 2560x1080 | Reference checkpoint |
 | --- | ---: | ---: | ---: |
 | Native | 1.00 | 2560x1080 | ~40.6 FPS |
 | Quality | 0.90 | 2304x972 | ~48.2 FPS |
 | Balanced | 0.85 | 2176x918 | ~52.6 FPS |
 | Performance | 0.75 | 1920x810 | ~58.9 FPS |
 
-Quality `0.90` is the preferred default. The performance numbers above are same-scene development-system measurements, not universal guarantees.
+These are same-scene development measurements, not universal guarantees.
 
-Tracked preset files:
-
-- `config/optibridge-native.ini`
-- `config/optibridge-quality.ini`
-- `config/optibridge-balanced.ini`
-- `config/optibridge-performance.ini`
-
-## Locked shared RC3 settings
+Final shared configuration:
 
 ```ini
 NativeSceneScale=1
@@ -78,70 +104,40 @@ FloraHashedCoverage=0
 FloraHashedCoverageScale=0.05
 ```
 
-Global game setting for RC3 validation:
+Validation used:
 
 ```text
 r__tf_mipbias 0
 ```
 
-## Build hashes
+## Important continuation notes
 
-Validated non-AVX RC3 binary:
+- **Action23 hashed foliage coverage was rejected** for release: it increased high-contrast foliage flicker in bright weather.
+- **Action24 alpha-only foliage mip bias is the final accepted path** and should be the starting point for continuation.
+- The main unresolved visual limitation is inherent sub-native reconstruction of very fine foliage, distant geometry and texture detail.
+- AVX runtime parity and clean installer/restore validation were not completed.
+- RTSS/Afterburner injection appeared to conflict with the game/renderer stack in at least one test configuration; treat overlays as separate compatibility variables.
 
-```text
-AnomalyDX11.exe
-21b93e59853aad1f2c9e469876bd5126e0b1a0ece279cba445a597d674a68b54
-```
+See `docs/PROJECT_HANDOFF.md` before changing the renderer.
 
-Corrected Action24 AVX CI binary:
+## Branch history
 
-```text
-AnomalyDX11AVX.exe
-d0404a340c62a84309b1c32623206996961ada58d47a88a0dde002060a2424b3
-```
+The experimental branches are intentionally retained as bisect/checkpoint history, including:
 
-The AVX build compiled successfully but still requires runtime parity validation before it is included in a release package.
+- `mt-baseline-2026.7.22`
+- `mt-action17-native-scene-scale`
+- `mt-action18-projection-jitter`
+- `mt-action19-temporal-diagnostics`
+- `mt-action20-foliage-stability`
+- `mt-action21-flora-mask-radius`
+- `mt-action22-flora-alpha-stability`
+- `mt-action23-hashed-flora-coverage`
+- `mt-action24-flora-alpha-mipbias`
+- `release-candidate-v0.5.0-rc1`
+- `release-candidate-v0.5.0-rc2`
+- `release-candidate-v0.5.0-rc3`
 
-## Managed install / restore
-
-RC3 now includes hash-aware scripts:
-
-- `scripts/install-rc3.ps1`
-- `scripts/uninstall-rc3.ps1`
-- `scripts/verify-rc3.ps1`
-- `scripts/apply-preset.cmd`
-
-The installer:
-
-- verifies the payload hash;
-- accepts only the known validated clean non-AVX baseline or an existing managed RC3 install;
-- creates a timestamped backup before replacing the clean baseline;
-- preserves prior OptiBridge config/preset files;
-- leaves `dxgi.dll` and `winmm.dll` unchanged and verifies that they stayed unchanged;
-- writes a managed-install manifest used by restore.
-
-The restore script verifies the original backup hash and refuses to overwrite a current executable that has been changed since RC3 was installed.
-
-See `docs/INSTALLATION.md` for details.
-
-## Regression / release gates
-
-The current checklist is `docs/REGRESSION_CHECKLIST.md`.
-
-Major remaining gates include:
-
-1. exercise clean install -> verify -> managed restore against the validated clean baseline and confirm the original SHA-256 is reproduced;
-2. complete old-save/new-save/new-game and repeated save/load regression;
-3. complete scope/ADS/PDA/UI/map-transition/weather/combat tests;
-4. complete the Quality/Balanced/Performance stability soak;
-5. isolate third-party overlay/injector crashes from core OptiBridge stability;
-6. runtime-test the corrected Action24 AVX executable before including AVX in the release package.
-
-## Safety
-
-The release path must never silently overwrite an unknown Modded Exes build. Unknown executable hashes are a hard stop until explicitly validated.
-
-The OptiBridge installer does not install, replace or delete ReShade or OptiScaler proxy DLLs.
+Do not squash these branches if preserving the investigation history matters.
 
 ## Upstream projects
 
@@ -150,3 +146,7 @@ The OptiBridge installer does not install, replace or delete ReShade or OptiScal
 - FSR2 DX11 fork used by OptiScaler: https://github.com/optiscaler/FidelityFX-FSR2-DX11
 
 This project is not affiliated with the GAMMA, Anomaly, OptiScaler, AMD, NVIDIA, or xray-monolith maintainers.
+
+## Maintenance status
+
+**Abandoned. Forks and continuation are welcome.**
